@@ -30,12 +30,7 @@ PluginManagerActor::PluginManagerActor(caf::actor_config &cfg) : caf::event_base
     // xstudio plugins
     char *plugin_path = std::getenv("XSTUDIO_PLUGIN_PATH");
     if (plugin_path) {
-#ifdef _WIN32
-        char path_env_var_sep = ';';
-#else
-        char path_env_var_sep = ':';
-#endif
-        for (const auto &p : xstudio::utility::split(plugin_path, path_env_var_sep)) {
+        for (const auto &p : xstudio::utility::split_path_list(plugin_path)) {
             manager_.emplace_front_path(p);
         }
     }

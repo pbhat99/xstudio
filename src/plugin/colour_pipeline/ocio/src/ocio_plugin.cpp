@@ -494,6 +494,62 @@ void OCIOColourPipeline::media_source_changed(
     }
 
     update_untonemapped(src_colour_mgmt_metadata);
+
+    // Populate the Layer/AOV dropdown from the media source's stream list
+    update_layer_dropdown();
+}
+
+void OCIOColourPipeline::update_layer_dropdown() {
+
+    auto media_source = current_media_source_actor();
+    if (!media_source) {
+        // No media source actor available, reset to default
+        layer_->set_role_data(
+            module::Attribute::StringChoices,
+            std::vector<std::string>{ui_text_.LAYER_DEFAULT},
+            false);
+        layer_->set_role_data(
+            module::Attribute::AbbrStringChoices,
+            std::vector<std::string>{ui_text_.LAYER_DEFAULT},
+            false);
+        layer_->set_value(ui_text_.LAYER_DEFAULT, false);
+        return;
+    }
+
+    // Query the media source for its image stream details
+    mail(utility::detail_atom_v, media::MT_IMAGE)
+        .request(media_source, caf::infinite)
+        .then(
+            [=](const std::vector<utility::ContainerDetail> &stream_details) {
+                std::vector<std::string> layer_names;
+                for (const auto &detail : stream_details) {
+                    layer_names.push_back(detail.name_);
+                }
+
+                if (layer_names.empty()) {
+                    layer_names.push_back(ui_text_.LAYER_DEFAULT);
+                }
+
+                // Preserve current selection if it's still valid
+                const auto current = layer_->value();
+                bool current_valid = std::find(
+                    layer_names.begin(), layer_names.end(), current) != layer_names.end();
+
+                layer_->set_role_data(
+                    module::Attribute::StringChoices, layer_names, false);
+                layer_->set_role_data(
+                    module::Attribute::AbbrStringChoices, layer_names, false);
+
+                if (!current_valid) {
+                    // Default to first layer (typically RGBA)
+                    layer_->set_value(layer_names.front(), false);
+                }
+            },
+            [=](const caf::error &err) {
+                spdlog::warn(
+                    "OCIOColourPipeline: Failed to query stream details: {}",
+                    to_string(err));
+            });
 }
 
 void OCIOColourPipeline::attribute_changed(
@@ -531,6 +587,30 @@ void OCIOColourPipeline::attribute_changed(
         synchronize_attribute(attribute_uuid, role, true);
 
         // Remaning attributes are synchronized unconditionally
+    } else if (attribute_uuid == layer_->uuid()) {
+
+        // User selected a different EXR layer/AOV - switch the active stream
+        // on the media source actor
+        auto media_source = current_media_source_actor();
+        if (media_source) {
+            const auto layer_name = layer_->value();
+            mail(media::current_media_stream_atom_v, media::MT_IMAGE, layer_name)
+                .request(media_source, caf::infinite)
+                .then(
+                    [=](bool switched) {
+                        if (!switched) {
+                            spdlog::warn(
+                                "OCIOColourPipeline: Failed to switch to layer '{}'",
+                                layer_name);
+                        }
+                    },
+                    [=](const caf::error &err) {
+                        spdlog::warn(
+                            "OCIOColourPipeline: Error switching layer: {}",
+                            to_string(err));
+                    });
+        }
+
     } else {
 
         synchronize_attribute(attribute_uuid, role, false);
@@ -595,6 +675,7 @@ void OCIOColourPipeline::connect_to_viewport(
     insert_menu_item(
         viewport_context_menu_model_name, "Display", "OCIO", 2.0f, display_, false);
     insert_menu_item(viewport_context_menu_model_name, "View", "OCIO", 3.0f, view_, false);
+    insert_menu_item(viewport_context_menu_model_name, "Layer", "", 21.0f, layer_, false);
     insert_menu_item(viewport_context_menu_model_name, "Channel", "", 21.5f, channel_, false);
     insert_menu_item(viewport_context_menu_model_name, "", "", 22.0f, nullptr, true); // divider
 
@@ -716,6 +797,19 @@ void OCIOColourPipeline::setup_ui() {
     channel_->set_role_data(module::Attribute::ToolbarPosition, 8.0f);
     channel_->set_role_data(module::Attribute::ToolTip, ui_text_.CS_MSG_CMS_SELECT_CLR_TIP);
 
+    // EXR Layer/AOV selection
+
+    layer_ = add_string_choice_attribute(
+        ui_text_.LAYER,
+        ui_text_.LAYER_SHORT,
+        ui_text_.LAYER_DEFAULT,
+        {ui_text_.LAYER_DEFAULT},
+        {ui_text_.LAYER_DEFAULT});
+    layer_->set_redraw_viewport_on_change(true);
+    layer_->set_role_data(module::Attribute::Enabled, true);
+    layer_->set_role_data(module::Attribute::ToolbarPosition, 7.5f);
+    layer_->set_role_data(module::Attribute::ToolTip, ui_text_.LAYER_TOOLTIP);
+
     // Exposure slider
 
     exposure_ = add_float_attribute(
@@ -748,6 +842,7 @@ void OCIOColourPipeline::setup_ui() {
 
     make_attribute_visible_in_viewport_toolbar(exposure_);
     make_attribute_visible_in_viewport_toolbar(channel_);
+    make_attribute_visible_in_viewport_toolbar(layer_);
     make_attribute_visible_in_viewport_toolbar(gamma_);
     make_attribute_visible_in_viewport_toolbar(saturation_);
 }

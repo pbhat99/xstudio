@@ -99,6 +99,12 @@ DropArea {
             })
             dragFinished(Qt.point(drop.x, drop.y), "External URIS", uris)
             drop.accept()
+        } else if (drop.keys.indexOf("text/uri-list") !== -1) {
+            // Internal drag with URI data (e.g. filesystem browser plugin)
+            // hasUrls is false for Drag.Internal, but we have URI data in mime
+            let uriData = drop.getDataAsString("text/uri-list")
+            dragFinished(Qt.point(drop.x, drop.y), "External URIS", uriData + "\n")
+            drop.accept()
         } else {
 
             // prepare drop data
@@ -149,6 +155,7 @@ DropArea {
             x: drag_cursor.x + drag_cursor.width
             y: drag_cursor.y + drag_cursor.height - height/2
             color: "#FFF00000"
+            clip: true
             //visible: dragCount > 1 // this doesn't work for some reason
 
             Text {

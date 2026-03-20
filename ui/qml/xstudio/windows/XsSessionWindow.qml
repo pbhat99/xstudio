@@ -65,6 +65,11 @@ ApplicationWindow {
             appWindow.height = ui_layouts_model.get(ui_layouts_model.root_index, "height")
             numLayouts = ui_layouts_model.rowCount(root_index)
             visible = true
+
+            // --review / -v flag: force Present layout on startup
+            if (typeof reviewModeEnabled !== "undefined" && reviewModeEnabled) {
+                setLayoutName("Present")
+            }
         }
         property var numLayouts: 0
 

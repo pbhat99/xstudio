@@ -131,12 +131,7 @@ void xstudio::ui::qml::setup_xstudio_qml_emgine(QQmlEngine *engine, caf::actor_s
     // with plugins
     char *plugin_path = std::getenv("XSTUDIO_PLUGIN_PATH");
     if (plugin_path) {
-#ifdef _WIN32
-        char path_env_var_sep = ';';
-#else
-        char path_env_var_sep = ':';
-#endif
-        for (const auto &p : xstudio::utility::split(plugin_path, path_env_var_sep)) {
+        for (const auto &p : xstudio::utility::split_path_list(plugin_path)) {
 
             // note - some xSTUDIO plugins have the backend plugin component
             // and a Qt/QML plugin component built into the same binary.
